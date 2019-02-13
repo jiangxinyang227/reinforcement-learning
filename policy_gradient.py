@@ -11,8 +11,6 @@
 import gym
 import tensorflow as tf
 import numpy as np
-import random
-from collections import deque
 
 # Hyper Parameters
 GAMMA = 0.95 # discount factor
