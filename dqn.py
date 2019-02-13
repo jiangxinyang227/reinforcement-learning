@@ -138,7 +138,7 @@ class DQN(object):
 
     def action(self, state):
         return np.argmax(self.Q_value.eval(feed_dict={
-            self.state_input: [state]}))[0]
+            self.state_input: [state]})[0])
 
 
 # 定义一些训练时的超参数
@@ -170,7 +170,6 @@ def main():
             action = agent.egreedy_action(state)
             # env.step可以在给定当前动作下获得下一个状态，奖赏等值
             next_state, reward, done, _ = env.step(action)
-            print(next_state, reward, done)
             # 定义reward
             reward = -1 if done else 0.1
             # 将五元组存到经验回放池中
@@ -179,22 +178,22 @@ def main():
             if done:
                 break
 
-            # 每100个episode测试一次
-            if episode % 100 == 0:
-                total_reward = 0
-                for i in range(TEST):
-                    state = env.reset()
-                    for j in range(STEP):
-                        # 用动画的形式渲染出来
-                        env.render()
-                        # 测试时的动作用max最大动作选择
-                        action = agent.action(state)
-                        state, reward, done, _ = env.step(action)
-                        total_reward += reward
-                        if done:
-                            break
-                ave_reward = total_reward / TEST
-                print('episode: ', episode, 'Evaluation Average Reward:', ave_reward)
+        # 每100个episode测试一次
+        if episode % 100 == 0:
+            total_reward = 0
+            for i in range(TEST):
+                state = env.reset()
+                for j in range(STEP):
+                    # 用动画的形式渲染出来
+                    env.render()
+                    # 测试时的动作用max最大动作选择
+                    action = agent.action(state)
+                    state, reward, done, _ = env.step(action)
+                    total_reward += reward
+                    if done:
+                        break
+            ave_reward = total_reward / TEST
+            print('episode: ', episode, 'Evaluation Average Reward:', ave_reward)
 
 
 if __name__ == "__main__":
