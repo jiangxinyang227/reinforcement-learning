@@ -1,186 +1,201 @@
-#######################################################################
-# Copyright (C)                                                       #
-# 2016 - 2019 Pinard Liu(liujianping-ok@163.com)                      #
-# https://www.cnblogs.com/pinard                                      #
-# Permission given to modify the code as long as you keep this        #
-# declaration at the top                                              #
-#######################################################################
-##https://www.cnblogs.com/pinard/p/9714655.html ##
-## 强化学习（八）价值函数的近似表示与Deep Q-Learning ##
-
 import gym
 import tensorflow as tf
 import numpy as np
 import random
 from collections import deque
 
-# Hyper Parameters for DQN
-GAMMA = 0.9  # discount factor for target Q
-INITIAL_EPSILON = 0.5  # starting value of epsilon
-FINAL_EPSILON = 0.01  # final value of epsilon
-REPLAY_SIZE = 10000  # experience replay buffer size
-BATCH_SIZE = 32  # size of minibatch
+
+# 定义DQN的超参数
+GAMMA = 0.9  # 衰减系数
+INITIAL_EPSILON = 0.5  # epsilon 贪婪法中的epsilon初始值
+FINAL_EPSILON = 0.01  # epsilon 贪婪法中的ε最终值，ε值在减小，说明随机性越来越低
+REPLAY_SIZE = 10000  # 经验回放池的尺寸大小
+BATCH_SIZE = 32  # batch size 的尺寸大小
 
 
-class DQN():
-    # DQN Agent
+class DQN(object):
+    """
+    定义DQN引擎
+    """
     def __init__(self, env):
-        # init experience replay
-        self.replay_buffer = deque()
-        # init some parameters
-        self.time_step = 0
+        """
+        初始化一些实例对象
+        :param env: 外部环境
+        """
+        self.replay_buffer = deque()  # 将经验回放池初始化为一个队列
+        self.time_step = 0  # 记录训练的步数
         self.epsilon = INITIAL_EPSILON
-        self.state_dim = env.observation_space.shape[0]  # 状态的个数
-        self.action_dim = env.action_space.n  # 动作的个数
-
-        self.create_Q_network()
-        self.create_training_method()
-
-        # Init session
-        self.session = tf.InteractiveSession()
-        self.session.run(tf.global_variables_initializer())
+        self.state_dim = env.observation_space.shape[0]  # 状态空间的维度
+        self.action_dim = env.action_space.n  # 动作空间的维度
+        self.hidden_dim = 20
 
     def create_Q_network(self):
         """
-        定义q网络, 用dnn来实现的,在这里动作和状态都是用索引表示的
+        定义q网络，在这里用dnn来实现，所有的动作和状态都是索引表示
         :return:
         """
-        # network weights
-        W1 = self.weight_variable([self.state_dim, 20])
-        b1 = self.bias_variable([20])
-        W2 = self.weight_variable([20, self.action_dim])
-        b2 = self.bias_variable([self.action_dim])
-        # input layer，[batch_size, state_dim]
         self.state_input = tf.placeholder("float", [None, self.state_dim])
-        # hidden layers
-        h_layer = tf.nn.relu(tf.matmul(self.state_input, W1) + b1)
-        # Q Value layer，[batch_size, action_dim]
-        self.Q_value = tf.matmul(h_layer, W2) + b2
+        with tf.variable_scope("dnn"):
+            W1 = tf.get_variable("W1", shape=[self.state_dim, self.hidden_dim],
+                                 initializer=tf.truncated_normal_initializer())
+            b1 = tf.Variable(tf.constant(0.01, shape=[self.hidden_dim]), name="b1")
+
+            W2 = tf.get_variable("W2", shape=[self.hidden_dim, self.action_dim],
+                                 initializer=tf.truncated_normal_initializer())
+            b2 = tf.Variable(tf.constant(0.01, shape=[self.action_dim]), name="b1")
+
+            h_layer = tf.nn.relu(tf.matmul(self.state_input, W1) + b1)
+            self.Q_value = tf.matmul(h_layer, W2) + b2
 
     def create_training_method(self):
         """
         定义训练方法
         :return:
         """
-        self.action_input = tf.placeholder("float", [None, self.action_dim])  # one hot presentation
+        self.action_input = tf.placeholder("float", [None, self.action_dim])  # ont-hot表示
         self.y_input = tf.placeholder("float", [None])
+        # tf.multiply是元素对应相乘的乘法，Q_action是获得当前状态下的Q值
         Q_action = tf.reduce_sum(tf.multiply(self.Q_value, self.action_input), reduction_indices=1)
+        # 利用当前状态的Q值和下一状态的Q值（目标Q值）计算均方误差，不过当前状态的Q值是用
+        # ε-贪婪法得到的，而下一状态的Q值是max最大动作的。
         self.cost = tf.reduce_mean(tf.square(self.y_input - Q_action))
         self.optimizer = tf.train.AdamOptimizer(0.0001).minimize(self.cost)
 
-    def perceive(self, state, action, reward, next_state, done):
-        one_hot_action = np.zeros(self.action_dim)
-        # 将动作用one-hot向量表示
-        one_hot_action[action] = 1
-        # 将五元祖添加到经验回放池中
-        self.replay_buffer.append((state, one_hot_action, reward, next_state, done))
-        # 如果池子大于最大值，则从左边删除
-        if len(self.replay_buffer) > REPLAY_SIZE:
-            self.replay_buffer.popleft()
-
-        # 如果池子中的数量大于batch_size的值，则开始训练Q网络
-        if len(self.replay_buffer) > BATCH_SIZE:
-            self.train_Q_network()
-
     def train_Q_network(self):
+        """
+        训练Q网络
+        :return:
+        """
         self.time_step += 1
-        # Step 1: obtain random minibatch from replay memory
+        # 在经验回放池中随机采样
         minibatch = random.sample(self.replay_buffer, BATCH_SIZE)
+        # 将各种数据依次拿出来
         state_batch = [data[0] for data in minibatch]
         action_batch = [data[1] for data in minibatch]
         reward_batch = [data[2] for data in minibatch]
         next_state_batch = [data[3] for data in minibatch]
 
-        # Step 2: calculate y
+        # 通过Q网络计算出目标Q值
         y_batch = []
-        Q_value_batch = self.Q_value.eval(feed_dict={self.state_input: next_state_batch})
+        # 通过Q网络计算出下一状态的Q值
+        Q_value_batch = self.Q_value.eval(feed_dict={
+            self.state_input: next_state_batch})
         for i in range(0, BATCH_SIZE):
             done = minibatch[i][4]
             if done:
+                # 如果是终止状态，则当前的Q值等于当前的奖励
                 y_batch.append(reward_batch[i])
             else:
+                # 在更新Q网络时的目标Q值是动作价值函数最大的值
                 y_batch.append(reward_batch[i] + GAMMA * np.max(Q_value_batch[i]))
 
-        self.optimizer.run(feed_dict={
-            self.y_input: y_batch,
-            self.action_input: action_batch,
-            self.state_input: state_batch
-        })
+        self.optimizer.run(feed_dict={self.y_input: y_batch,
+                                      self.action_input: action_batch,
+                                      self.state_input: state_batch})
 
     def egreedy_action(self, state):
         """
         根据当前的q网络计算所有动作对应的q值，然后基于egreedy来选择当前的动作
-        :param state:
+        :param state: 状态的向量表示
         :return:
         """
-        # 先获得q值
-        Q_value = self.Q_value.eval(feed_dict={
-            self.state_input: [state]
-        })[0]
-        # 如果随机的数小于epsilon值，则随机一个动作，否则选q值最大的动作
+        # 先获得q值, 获得是一个维度等于action_dim的向量, 向量中每个值可以认为是每个动作对应的Q值
+        Q_value = self.Q_value.eval(feed_dict={self.state_input: [state]})[0]
+
+        # 采用ε-贪婪法来选择动作，如果随机的数小于epsilon值，则随机一个动作，否则选q值最大的动作
         if random.random() <= self.epsilon:
-            self.epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / 10000
+            if self.epsilon > FINAL_EPSILON:
+                self.epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / 10000
             return random.randint(0, self.action_dim - 1)
         else:
-            self.epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / 10000
+            if self.epsilon > FINAL_EPSILON:
+                self.epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / 10000
             return np.argmax(Q_value)
+
+    def perceive(self, state, action, reward, next_state, done):
+        """
+        将五元组加入到经验回放池中，并且提供Q网络训练的入口
+        :param state: 当前状态向量
+        :param action: 当前动作索引
+        :param reward: 奖励
+        :param next_state: 下一状态向量
+        :param done: 是否终止状态
+        :return:
+        """
+        # 将动作用one-hot向量表示
+        one_hot_action = np.zeros(self.action_dim)
+        one_hot_action[action] = 1
+
+        # 将五元组添加到经验回放池中
+        self.replay_buffer.append((state, one_hot_action, reward, next_state, done))
+        # 如果池子大于最大值，则从左边删除
+        if len(self.replay_buffer) > REPLAY_SIZE:
+            self.replay_buffer.popleft()
+
+        # 如果池子中的五元组数量大于batch size的值，则开始训练Q网络
+        if len(self.replay_buffer) > BATCH_SIZE:
+            self.train_Q_network()
 
     def action(self, state):
         return np.argmax(self.Q_value.eval(feed_dict={
-            self.state_input: [state]
-        })[0])
-
-    def weight_variable(self, shape):
-        initial = tf.truncated_normal(shape)
-        return tf.Variable(initial)
-
-    def bias_variable(self, shape):
-        initial = tf.constant(0.01, shape=shape)
-        return tf.Variable(initial)
+            self.state_input: [state]}))[0]
 
 
-# ---------------------------------------------------------
-# Hyper Parameters
-ENV_NAME = 'CartPole-v0'
-EPISODE = 3000  # Episode limitation
-STEP = 300  # Step limitation in an episode
-TEST = 10  # The number of experiment test every 100 episode
+# 定义一些训练时的超参数
+ENV_NAME = "CartPole-v0"  # 游戏的名称/环境的名称
+EPISODE = 3000  # 定义了状态序列的数量
+STEP = 300  # 每条序列的长度
+TEST = 10  # 测试时的序列数量
 
 
 def main():
-    # initialize OpenAI Gym env and dqn agent
-    env = gym.make(ENV_NAME)  # 定义使用gym库中的一个环境
-    agent = DQN(env)
+    env = gym.make(ENV_NAME)  # 初始化环境
+    agent = DQN(env)  # 初始化agent
+
+    # 初始化一些变量，必须在这里初始化，因为之后要session初始化变量
+    agent.create_Q_network()
+    agent.create_training_method()
+
+    # 初始化session，采用tf.InteractiveSession()可以直接调用eval方法返回值
+    session = tf.InteractiveSession()
+    session.run(tf.global_variables_initializer())
 
     for episode in range(EPISODE):
-        # initialize task
-        state = env.reset()  # 随机初始化状态，得到其特征向量
-        # Train
+        # 随机初始化状态，得到其状态向量
+        state = env.reset()
+
+        # 训练一条序列
         for step in range(STEP):
-            action = agent.egreedy_action(state)  # e-greedy action for train
-            # env.step可以在给定当前动作下获得下一个状态，回报等值
+            # 通过ε贪婪法获得当前的动作
+            action = agent.egreedy_action(state)
+            # env.step可以在给定当前动作下获得下一个状态，奖赏等值
             next_state, reward, done, _ = env.step(action)
-            # Define reward for agent
+            print(next_state, reward, done)
+            # 定义reward
             reward = -1 if done else 0.1
+            # 将五元组存到经验回放池中
             agent.perceive(state, action, reward, next_state, done)
             state = next_state
             if done:
                 break
-        # Test every 100 episodes
-        if episode % 100 == 0:
-            total_reward = 0
-            for i in range(TEST):
-                state = env.reset()
-                for j in range(STEP):
-                    env.render()
-                    action = agent.action(state)  # direct action for test
-                    state, reward, done, _ = env.step(action)
-                    total_reward += reward
-                    if done:
-                        break
-            ave_reward = total_reward / TEST
-            print('episode: ', episode, 'Evaluation Average Reward:', ave_reward)
+
+            # 每100个episode测试一次
+            if episode % 100 == 0:
+                total_reward = 0
+                for i in range(TEST):
+                    state = env.reset()
+                    for j in range(STEP):
+                        # 用动画的形式渲染出来
+                        env.render()
+                        # 测试时的动作用max最大动作选择
+                        action = agent.action(state)
+                        state, reward, done, _ = env.step(action)
+                        total_reward += reward
+                        if done:
+                            break
+                ave_reward = total_reward / TEST
+                print('episode: ', episode, 'Evaluation Average Reward:', ave_reward)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
