@@ -10,7 +10,7 @@ GAMMA = 0.9  # 衰减系数
 INITIAL_EPSILON = 0.5  # epsilon 贪婪法中的epsilon初始值
 FINAL_EPSILON = 0.01  # epsilon 贪婪法中的ε最终值，ε值在减小，说明随机性越来越低
 REPLAY_SIZE = 10000  # 经验回放池的尺寸大小
-BATCH_SIZE = 128  # batch size 的尺寸大小
+BATCH_SIZE = 32  # batch size 的尺寸大小
 REPLACE_TARGET_FREQ = 10  # 更新目标网络参数的频率
 
 
@@ -30,30 +30,6 @@ class DQN(object):
         self.action_dim = env.action_space.n  # 动作空间的维度
         self.hidden_dim = 20
 
-    def basic_network(self):
-        W1 = tf.get_variable("W1", shape=[self.state_dim, self.hidden_dim],
-                             initializer=tf.truncated_normal_initializer())
-        b1 = tf.Variable(tf.constant(0.01, shape=[self.hidden_dim]), name="b1")
-        h_layer = tf.nn.relu(tf.matmul(self.state_input, W1) + b1)
-
-        with tf.variable_scope("value"):
-            W21 = tf.get_variable("W2", shape=[self.hidden_dim, self.action_dim],
-                                  initializer=tf.truncated_normal_initializer())
-            b21 = tf.Variable(tf.constant(0.01, shape=[self.action_dim]), name="b1")
-
-            V = tf.matmul(h_layer, W21) + b21
-
-        with tf.variable_scope("advantage"):
-            W22 = tf.get_variable("W2", shape=[self.hidden_dim, self.action_dim],
-                                  initializer=tf.truncated_normal_initializer())
-            b22 = tf.Variable(tf.constant(0.01, shape=[self.action_dim]), name="b1")
-
-            A = tf.matmul(h_layer, W22) + b22
-
-        Q_value = V + (A - tf.reduce_mean(A, axis=1, keep_dims=True))
-
-        return Q_value
-
     def create_Q_network(self):
         """
         定义q网络，在这里用dnn来实现，所有的动作和状态都是索引表示
@@ -61,11 +37,29 @@ class DQN(object):
         """
         self.state_input = tf.placeholder("float", [None, self.state_dim])
         with tf.variable_scope("current_net"):
-            self.Q_value = self.basic_network()
+            W1 = tf.get_variable("W1", shape=[self.state_dim, self.hidden_dim],
+                                 initializer=tf.truncated_normal_initializer())
+            b1 = tf.Variable(tf.constant(0.01, shape=[self.hidden_dim]), name="b1")
+
+            W2 = tf.get_variable("W2", shape=[self.hidden_dim, self.action_dim],
+                                 initializer=tf.truncated_normal_initializer())
+            b2 = tf.Variable(tf.constant(0.01, shape=[self.action_dim]), name="b1")
+
+            h_layer = tf.nn.relu(tf.matmul(self.state_input, W1) + b1)
+            self.Q_value = tf.matmul(h_layer, W2) + b2
 
         # 定义目标网络，网络结构和上面的网络结构一致
         with tf.variable_scope("target_net"):
-            self.target_Q_value = self.basic_network()
+            W1_t = tf.get_variable("W1", shape=[self.state_dim, self.hidden_dim],
+                                   initializer=tf.truncated_normal_initializer())
+            b1_t = tf.Variable(tf.constant(0.01, shape=[self.hidden_dim]), name="b1")
+
+            W2_t = tf.get_variable("W2", shape=[self.hidden_dim, self.action_dim],
+                                   initializer=tf.truncated_normal_initializer())
+            b2_t = tf.Variable(tf.constant(0.01, shape=[self.action_dim]), name="b1")
+
+            h_layer_t = tf.nn.relu(tf.matmul(self.state_input, W1_t) + b1_t)
+            self.target_Q_value = tf.matmul(h_layer_t, W2_t) + b2_t
 
         # 拿到Q网络的参数和目标Q网络的参数
         t_params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_net')
@@ -106,22 +100,17 @@ class DQN(object):
 
         # 通过Q网络计算出目标Q值
         y_batch = []
-        # 通过原Q网络计算出下一状态的Q值
-        current_Q_batch = self.Q_value.eval(feed_dict={self.state_input: next_state_batch})
-        # 得到Q值最大的动作
-        max_action_next = np.argmax(current_Q_batch, axis=1)
         # 通过目标Q网络计算出下一状态的Q值
-        target_Q_batch = self.target_Q_value.eval(feed_dict={self.state_input: next_state_batch})
-
+        Q_value_batch = self.target_Q_value.eval(feed_dict={
+            self.state_input: next_state_batch})
         for i in range(0, BATCH_SIZE):
             done = minibatch[i][4]
             if done:
                 # 如果是终止状态，则当前的Q值等于当前的奖励
                 y_batch.append(reward_batch[i])
             else:
-                # 在更新Q网络时的目标Q值选取由原Q网络得到的最大动作对应的Q值
-                target_Q_value = target_Q_batch[i, max_action_next[i]]
-                y_batch.append(reward_batch[i] + GAMMA * target_Q_value)
+                # 在更新Q网络时的目标Q值是动作价值函数最大的值
+                y_batch.append(reward_batch[i] + GAMMA * np.max(Q_value_batch[i]))
 
         self.optimizer.run(feed_dict={self.y_input: y_batch,
                                       self.action_input: action_batch,
