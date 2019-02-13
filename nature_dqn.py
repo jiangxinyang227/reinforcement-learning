@@ -48,6 +48,7 @@ class DQN(object):
             h_layer = tf.nn.relu(tf.matmul(self.state_input, W1) + b1)
             self.Q_value = tf.matmul(h_layer, W2) + b2
 
+        # 定义目标网络，网络结构和上面的网络结构一致
         with tf.variable_scope("target_net"):
             W1_t = tf.get_variable("W1", shape=[self.state_dim, self.hidden_dim],
                                    initializer=tf.truncated_normal_initializer())
@@ -60,10 +61,12 @@ class DQN(object):
             h_layer_t = tf.nn.relu(tf.matmul(self.state_input, W1_t) + b1_t)
             self.target_Q_value = tf.matmul(h_layer_t, W2_t) + b2_t
 
+        # 拿到Q网络的参数和目标Q网络的参数
         t_params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_net')
         print(t_params)
         e_params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='current_net')
         print(e_params)
+        # 将Q网络的参数复制给目标Q网络
         with tf.variable_scope('soft_replacement'):
             self.target_replace_op = [tf.assign(t, e) for t, e in zip(t_params, e_params)]
 
