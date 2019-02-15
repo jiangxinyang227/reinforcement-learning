@@ -1,13 +1,3 @@
-#######################################################################
-# Copyright (C)                                                       #
-# 2016-2018 Shangtong Zhang(zhangshangtong.cpp@gmail.com)             #
-# 2016 Kenta Shimada(hyperkentakun@gmail.com)                         #
-# Permission given to modify the code as long as you keep this        #
-# declaration at the top                                              #
-#######################################################################
-##https://www.cnblogs.com/pinard/p/9614290.html ##
-## 强化学习（六）时序差分在线控制算法SARSA ##
-
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
