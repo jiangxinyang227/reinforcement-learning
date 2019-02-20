@@ -41,25 +41,51 @@ class DQN(object):
                                  initializer=tf.truncated_normal_initializer())
             b1 = tf.Variable(tf.constant(0.01, shape=[self.hidden_dim]), name="b1")
 
-            W2 = tf.get_variable("W2", shape=[self.hidden_dim, self.action_dim],
-                                 initializer=tf.truncated_normal_initializer())
-            b2 = tf.Variable(tf.constant(0.01, shape=[self.action_dim]), name="b1")
+            # hidden layer 1
+            h_layer_1 = tf.nn.relu(tf.matmul(self.state_input, W1) + b1)
 
-            h_layer = tf.nn.relu(tf.matmul(self.state_input, W1) + b1)
-            self.Q_value = tf.matmul(h_layer, W2) + b2
+            # hidden layer  for state value
+            with tf.variable_scope('Value'):
+                Wv = tf.get_variable("Wv", shape=[self.hidden_dim, 1],
+                                     initializer=tf.truncated_normal_initializer())
+                bv = tf.Variable(tf.constant(0.01, shape=[1], name="bv"))
+                self.VC = tf.matmul(h_layer_1, Wv) + bv
+
+            # hidden layer  for action value
+            with tf.variable_scope('Advantage'):
+                Wa = tf.get_variable("Wa", shape=[self.hidden_dim, self.action_dim],
+                                     initializer=tf.truncated_normal_initializer())
+                ba = tf.Variable(tf.constant(0.01, shape=[self.action_dim]), name="ba")
+                self.AC = tf.matmul(h_layer_1, Wa) + ba
+
+                # Q Value layer
+                self.Q_value = self.VC + (self.AC - tf.reduce_mean(self.AC, axis=1, keep_dims=True))
 
         # 定义目标网络，网络结构和上面的网络结构一致
         with tf.variable_scope("target_net"):
-            W1_t = tf.get_variable("W1", shape=[self.state_dim, self.hidden_dim],
-                                   initializer=tf.truncated_normal_initializer())
-            b1_t = tf.Variable(tf.constant(0.01, shape=[self.hidden_dim]), name="b1")
+            W1t = tf.get_variable("W1t", shape=[self.state_dim, self.hidden_dim],
+                                  initializer=tf.truncated_normal_initializer())
+            b1t = tf.Variable(tf.constant(0.01, shape=[self.hidden_dim]), name="b1t")
 
-            W2_t = tf.get_variable("W2", shape=[self.hidden_dim, self.action_dim],
-                                   initializer=tf.truncated_normal_initializer())
-            b2_t = tf.Variable(tf.constant(0.01, shape=[self.action_dim]), name="b1")
+            # hidden layer 1
+            h_layer_1t = tf.nn.relu(tf.matmul(self.state_input, W1t) + b1t)
 
-            h_layer_t = tf.nn.relu(tf.matmul(self.state_input, W1_t) + b1_t)
-            self.target_Q_value = tf.matmul(h_layer_t, W2_t) + b2_t
+            # hidden layer  for state value
+            with tf.variable_scope('Value'):
+                W2v = tf.get_variable("W2v", shape=[self.hidden_dim, 1],
+                                      initializer=tf.truncated_normal_initializer())
+                b2v = tf.Variable(tf.constant(0.01, shape=[1], name="b2v"))
+                self.VT = tf.matmul(h_layer_1t, W2v) + b2v
+
+            # hidden layer  for action value
+            with tf.variable_scope('Advantage'):
+                W2a = tf.get_variable("W2a", shape=[self.hidden_dim, self.action_dim],
+                                      initializer=tf.truncated_normal_initializer())
+                b2a = tf.Variable(tf.constant(0.01, shape=[self.action_dim]), name="b2a")
+                self.AT = tf.matmul(h_layer_1t, W2a) + b2a
+
+                # Q Value layer
+                self.target_Q_value = self.VT + (self.AT - tf.reduce_mean(self.AT, axis=1, keep_dims=True))
 
         # 拿到Q网络的参数和目标Q网络的参数
         t_params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_net')
