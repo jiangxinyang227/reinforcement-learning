@@ -69,9 +69,9 @@ class DQN(object):
 
         # 拿到Q网络的参数和目标Q网络的参数
         t_params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='target_net')
-        print(t_params)
+
         e_params = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='current_net')
-        print(e_params)
+
         # 将Q网络的参数复制给目标Q网络
         with tf.variable_scope('soft_replacement'):
             self.target_replace_op = [tf.assign(t, e) for t, e in zip(t_params, e_params)]
